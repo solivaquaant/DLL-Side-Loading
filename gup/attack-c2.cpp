@@ -1,5 +1,6 @@
 #include "pch.h"
-#include <windows.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #define _CRT_SECURE_NO_DEPRECATE
 #pragma warning (disable : 4996)
@@ -8,7 +9,6 @@
 #pragma comment(linker, "/export:curl_easy_init=gup.curl_easy_init,@6")
 #pragma comment(linker, "/export:curl_easy_perform=gup.curl_easy_perform,@12")
 #pragma comment(linker, "/export:curl_easy_setopt=gup.curl_easy_setopt,@16")
-
 
 DWORD WINAPI DoMagic(LPVOID lpParameter)
 {
@@ -42,13 +42,14 @@ BOOL APIENTRY DllMain(HMODULE hModule,
 
     switch (ul_reason_for_call)
     {
-    case DLL_PROCESS_ATTACH:
+    case DLL_PROCESS_ATTACH: 
         threadHandle = CreateThread(NULL, 0, DoMagic, NULL, 0, NULL);
         CloseHandle(threadHandle);
         break;
-
     case DLL_THREAD_ATTACH:
+        break;
     case DLL_THREAD_DETACH:
+        break;
     case DLL_PROCESS_DETACH:
         break;
     }
