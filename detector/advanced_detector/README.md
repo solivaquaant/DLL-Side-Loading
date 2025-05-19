@@ -7,11 +7,16 @@ python main.py --scan-registry
 
 python main.py --monitor --use-virustotal
 
-<!-- --- -->
+<!-- tong hop 3 cai tren -->
+python main.py --full-scan "C:\Program Files\Notepad++\updater" --use-virustotal 
+
+<!-- --focus on gup.exe and svchost.exe-- -->
 
 python main.py --scan-processes
 
-python main.py --full-scan "C:\Program Files\Notepad++\updater" --use-virustotal
+<!-- --having errors at the moment-- -->
+
+python main.py --scan-by-name
 
 python main.py --scan-pid 1234
 
