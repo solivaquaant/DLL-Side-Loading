@@ -10,7 +10,7 @@ POTENTIAL_MALWARE_COMMAND = "gup.exe"
 
 def scan_hkcu_run_key():
     """
-    Scans the HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run registry key
+    Scans the HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run registry key
     for suspicious entries, particularly VBS scripts in APPDATA or commands launching GUP.exe.
     Returns a list of suspicious findings.
     """

@@ -1,12 +1,32 @@
 import logging
 import os
 from datetime import datetime
+from colorama import init, Fore, Style
 
 LOG_DIR = "logs"
 if not os.path.exists(LOG_DIR):
     os.makedirs(LOG_DIR)
 
 LOG_FILE = os.path.join(LOG_DIR, f"detection_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+
+# Custom Formatter to add colors
+class ColoredFormatter(logging.Formatter):
+    FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
+    
+    # Define color mapping for different log levels
+    LOG_COLORS = {
+        logging.DEBUG: Style.DIM + Fore.WHITE,
+        logging.INFO: Fore.CYAN, 
+        logging.WARNING: Fore.YELLOW,
+        logging.ERROR: Fore.RED,
+        logging.CRITICAL: Style.BRIGHT + Fore.RED,
+    }
+
+    def format(self, record):
+        log_message = super().format(record)
+        # Add color based on log level
+        color_prefix = self.LOG_COLORS.get(record.levelno, Fore.WHITE)
+        return f"{color_prefix}{log_message}{Style.RESET_ALL}"
 
 def setup_logger():
     """
@@ -25,8 +45,8 @@ def setup_logger():
     # Console handler - logs INFO and above
     ch = logging.StreamHandler()
     ch.setLevel(logging.INFO) # Only show INFO and above in console for brevity
-    formatter_ch = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    ch.setFormatter(formatter_ch)
+    # formatter_ch = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    ch.setFormatter(ColoredFormatter(ColoredFormatter.FORMAT)) # Thay bằng dòng này
     logger.addHandler(ch)
     
     return logger

@@ -19,17 +19,12 @@ init(autoreset=True)
 # Alert the user with a message of varying severity levels (INFO, WARNING, CRITICAL)
 def alert_user(message, severity="INFO"):
     """Prints a color-coded alert to the console and logs."""
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    log_prefix = f"ALERT [{severity}]"
 
     if severity == "CRITICAL":
-        print(f"{Fore.RED}{Style.BRIGHT}{timestamp} - {log_prefix}: {message}{Style.RESET_ALL}")
         logger.critical(message, extra={"ui_alert": True})
     elif severity == "WARNING":
-        print(f"{Fore.YELLOW}{timestamp} - {log_prefix}: {message}{Style.RESET_ALL}")
         logger.warning(message, extra={"ui_alert": True})
     else:
-        print(f"{Fore.CYAN}{timestamp} - {log_prefix}: {message}{Style.RESET_ALL}")
         logger.info(message, extra={"ui_alert": True})
 
 # Show a message box alert
@@ -71,7 +66,7 @@ def terminate_process(pid, reason=""):
             action_message += f" Reason: {reason}"
 
         logger.warning(action_message)
-        alert_user(f"Process '{proc_name}' (PID: {pid}) identified for termination. (Simulated)", "WARNING")
+        alert_user(f"Process '{proc_name}' (PID: {pid}) identified for termination.", "WARNING")
     # Process not found
     except psutil.NoSuchProcess:
         logger.error(f"Cannot terminate: Process with PID {pid} not found.")
@@ -92,7 +87,7 @@ def terminate_process_and_parent(child_pid, parent_pid, reason=""):
     Terminates a child process and its parent process.
     """
     logger.warning(f"Attempting to terminate child process (PID: {child_pid}) and its parent (PID: {parent_pid}).")
-    alert_user(f"Attempting to terminate child process (PID: {child_pid}) and its parent (PID: {parent_pid}). (Simulated)", "CRITICAL")
+    alert_user(f"Attempting to terminate child process (PID: {child_pid}) and its parent (PID: {parent_pid}).", "CRITICAL")
     # Terminate child process
     terminate_process(child_pid, reason=f"Child of suspicious chain. {reason}")
 
@@ -125,30 +120,35 @@ def terminate_process_and_parent(child_pid, parent_pid, reason=""):
 def print_process_scan_results(results):
     # No results found
     if not results:
-        print(Fore.GREEN + "No suspicious process activity found based on current criteria.")
+        logger.info(Fore.GREEN + "No suspicious process activity found based on current criteria.") 
         return
 
     # Results header
-    print(Fore.CYAN + Style.BRIGHT + "\n--- Process Scan Results ---")
+    logger.info(Fore.CYAN + Style.BRIGHT + "\n--- Process Scan Results ---")
     for finding in results:
         # Suspicious process chain detected
         if finding["type"] == "Suspicious Process Chain":
             gup = finding["gup_process"]
             svchost = finding["svchost_process"]
             message = finding['message']
-            alert_user(message, "CRITICAL")
-            show_alert_messagebox("MALICIOUS PROCESS CHAIN DETECTED", message, "error") # Alert via messagebox
-            print(f"{Fore.RED}{Style.BRIGHT}[ALERT] {message}")
-            print(f"  Attacker Process: {gup.get('name','N/A')} (PID: {gup.get('pid','N/A')}, Path: {gup.get('exe', 'N/A')})")
-            print(f"  Compromised/Spawned Process: {svchost.get('name','N/A')} (PID: {svchost.get('pid','N/A')}, Path: {svchost.get('exe', 'N/A')})")
+
+            # alert_user(message, "CRITICAL")
+            # show_alert_messagebox("MALICIOUS PROCESS CHAIN DETECTED", message, "error") # Alert via messagebox
+            # print(f"{Fore.RED}{Style.BRIGHT}[ALERT] {message}")
+            # print(f"  Attacker Process: {gup.get('name','N/A')} (PID: {gup.get('pid','N/A')}, Path: {gup.get('exe', 'N/A')})")
+            # print(f"  Compromised/Spawned Process: {svchost.get('name','N/A')} (PID: {svchost.get('pid','N/A')}, Path: {svchost.get('exe', 'N/A')})")
+            logger.critical(f"  Attacker Process: {gup.get('name','N/A')} (PID: {gup.get('pid','N/A')}, Path: {gup.get('exe', 'N/A')})")
+            logger.critical(f"  Compromised/Spawned Process: {svchost.get('name','N/A')} (PID: {svchost.get('pid','N/A')}, Path: {svchost.get('exe', 'N/A')})") 
             
             # If network connections exist
             if svchost.get('connections') and svchost['connections'] != "Access Denied or Error":
-                print(f"{Fore.YELLOW}    Network Connections by {svchost.get('name','N/A')} (PID: {svchost.get('pid','N/A')}):")
+                logger.critical(f"{Fore.YELLOW}    Network Connections by {svchost.get('name','N/A')} (PID: {svchost.get('pid','N/A')}):")
                 for conn in svchost['connections']:
                     laddr_str = f"{conn.get('laddr',())[0]}:{conn.get('laddr',())[1]}" if conn.get('laddr') else "N/A"
                     raddr_str = f"{conn.get('raddr',())[0]}:{conn.get('raddr',())[1]}" if conn.get('raddr') else "N/A"
-                    print(f"      LADDR: {laddr_str}, RADDR: {raddr_str}, Status: {conn.get('status','N/A')}")
+                    logger.critical(f"      LADDR: {laddr_str}, RADDR: {raddr_str}, Status: {conn.get('status','N/A')}")
+            # alert_user and termination logic remains the same
+            alert_user(message, "CRITICAL")
             terminate_process_and_parent(svchost.get('pid'), gup.get('pid'), reason="Suspicious GUP.exe -> svchost.exe chain")
 
         # svchost.exe with suspicious parent
@@ -156,91 +156,113 @@ def print_process_scan_results(results):
             svchost = finding.get("svchost_process", {})
             parent = finding.get("parent_process", {})
             message = finding.get('message', 'Suspicious svchost parent detected.')
-            alert_user(message, "CRITICAL") 
-            show_alert_messagebox("MALICIOUS PROCESS DETECTED", message, "error") 
-            print(f"{Fore.RED}{Style.BRIGHT}[ALERT] {message}")
-            print(f"  svchost.exe PID: {svchost.get('pid', 'N/A')}, Path: {svchost.get('exe', 'N/A')}")
-            print(f"  Parent Process: {parent.get('name', 'N/A')} (PID: {parent.get('pid', 'N/A')})")
+            # alert_user(message, "CRITICAL") 
+            # show_alert_messagebox("MALICIOUS PROCESS DETECTED", message, "error") 
+            # print(f"{Fore.RED}{Style.BRIGHT}[ALERT] {message}")
+            # print(f"  svchost.exe PID: {svchost.get('pid', 'N/A')}, Path: {svchost.get('exe', 'N/A')}")
+            # print(f"  Parent Process: {parent.get('name', 'N/A')} (PID: {parent.get('pid', 'N/A')})")
+            logger.critical(f"  svchost.exe PID: {svchost.get('pid', 'N/A')}, Path: {svchost.get('exe', 'N/A')}") 
+            logger.critical(f"  Parent Process: {parent.get('name', 'N/A')} (PID: {parent.get('pid', 'N/A')})") 
+            
             # Parent is inaccessible
             if finding["type"] == "Suspicious svchost Parent (Parent Inaccessible)":
-                print(f"  Note: Parent process was inaccessible or terminated.")
+                logger.critical(f"  Note: Parent process was inaccessible or terminated.")
+            alert_user(message, "CRITICAL")
             terminate_process_and_parent(svchost.get('pid'), parent.get('pid'), reason="Suspicious svchost parent")
         
         # General process detail
         elif finding["type"] == "ProcessDetails":
-            color = Fore.GREEN
+            level = logging.INFO
             if finding.get("suspicion_notes"):
-                color = Fore.YELLOW
-                alert_user(f"Suspicion regarding PID {finding.get('pid','N/A')}: {finding['suspicion_notes']}", "WARNING")
+                level = logging.WARNING
+                # alert_user(f"Suspicion regarding PID {finding.get('pid','N/A')}: {finding['suspicion_notes']}", "WARNING")
 
-            print(f"{color}Details for PID {finding.get('pid','N/A')}: {finding.get('name','N/A')}")
-            print(f"  Path: {finding.get('exe', 'N/A')}")
-            print(f"  Parent: {finding.get('parent_name', 'N/A')} (PPID: {finding.get('ppid', 'N/A')})")
-            print(f"  CMD Line: {' '.join(finding.get('cmdline', []))}")
+            # print(f"{color}Details for PID {finding.get('pid','N/A')}: {finding.get('name','N/A')}")
+            # print(f"  Path: {finding.get('exe', 'N/A')}")
+            # print(f"  Parent: {finding.get('parent_name', 'N/A')} (PPID: {finding.get('ppid', 'N/A')})")
+            # print(f"  CMD Line: {' '.join(finding.get('cmdline', []))}")
+            
+            logger.log(level, f"Details for PID {finding.get('pid','N/A')}: {finding.get('name','N/A')}")
+            logger.log(level, f"  Path: {finding.get('exe', 'N/A')}")
+            logger.log(level, f"  Parent: {finding.get('parent_name', 'N/A')} (PPID: {finding.get('ppid', 'N/A')})")
+            logger.log(level, f"  CMD Line: {' '.join(finding.get('cmdline', []))}")
 
             if finding.get('suspicion_notes'):
-                print(f"{Fore.YELLOW}  Notes: {finding['suspicion_notes']}")
+                logger.warning(f"  Notes: {finding['suspicion_notes']}")
 
             # DLLs info
             dlls_data = finding.get('dlls', [])
             if isinstance(dlls_data, list) and any(dll.strip() for dll in dlls_data):
-                print(f"  Loaded DLLs (sample): {', '.join(dlls_data[:5])}{'...' if len(dlls_data) > 5 else ''}")
+                logger.log(level, f"  Loaded DLLs (sample): {', '.join(dlls_data[:5])}{'...' if len(dlls_data) > 5 else ''}") 
             elif isinstance(dlls_data, str): 
-                print(f"  Loaded DLLs: {dlls_data}")
+                logger.log(level, f"  Loaded DLLs: {dlls_data}") 
 
             # Network connections info
             connections_data = finding.get('connections', [])
             if isinstance(connections_data, list) and connections_data:
-                print(f"  Network Connections:")
+                logger.log(level, f"  Network Connections:") 
                 for conn in connections_data[:3]: 
                     laddr_str = f"{conn.get('laddr',())[0]}:{conn.get('laddr',())[1]}" if conn.get('laddr') else "N/A"
                     raddr_str = f"{conn.get('raddr',())[0]}:{conn.get('raddr',())[1]}" if conn.get('raddr') else "N/A"
-                    print(f"    LADDR: {laddr_str}, RADDR: {raddr_str}, Status: {conn.get('status','N/A')}")
+                    logger.log(level, f"    LADDR: {laddr_str}, RADDR: {raddr_str}, Status: {conn.get('status','N/A')}") 
                 if len(connections_data) > 3: print("    ...")
             elif isinstance(connections_data, str):
-                print(f"  Network Connections: {connections_data}")
+                logger.log(level, f"  Network Connections: {connections_data}") 
+
+            if finding.get("suspicion_notes"):
+                alert_user(f"Suspicion regarding PID {finding.get('pid','N/A')}: {finding['suspicion_notes']}", "WARNING")
 
 # Print results from registry scan (HKCU\Run)
 def print_registry_scan_results(results):
     if not results:
-        print(Fore.GREEN + "No suspicious registry entries found in HKCU\\Run based on current criteria.")
+        logger.info(Fore.GREEN + "No suspicious registry entries found in HKCU\\Run based on current criteria." + Style.RESET_ALL) 
         return
 
-    print(Fore.CYAN + Style.BRIGHT + "\n--- Registry Scan Results (HKCU\\Run) ---")
+    # logger.info(Fore.CYAN + Style.BRIGHT + "\n--- Registry Scan Results (HKCU\\Run) ---" + Style.RESET_ALL) 
     for entry in results:
-        alert_user(f"Suspicious startup entry found: Name: '{entry['value_name']}', Data: '{entry.get('value_data','N/A')[:100]}...'", "WARNING")
-        show_alert_messagebox("Suspicious Registry Entry", f"Suspicious startup entry found:\nName: '{entry['value_name']}'\nData: '{entry.get('value_data','N/A')[:100]}...'", "warning") # Alert via messagebox
+        # alert_user(f"Suspicious startup entry found: Name: '{entry['value_name']}', Data: '{entry.get('value_data','N/A')[:100]}...'", "WARNING")
+        # show_alert_messagebox("Suspicious Registry Entry", f"Suspicious startup entry found:\nName: '{entry['value_name']}'\nData: '{entry.get('value_data','N/A')[:100]}...'", "warning") # Alert via messagebox
         
         print(f"{Fore.YELLOW}[ALERT] Suspicious Startup Entry:")
         print(f"  Key Path: {entry.get('key_path','N/A')}")
         print(f"  Value Name: {entry.get('value_name','N/A')}")
         print(f"  Value Data: {entry.get('value_data','N/A')}")
         print(f"  Reasons:")
+
+        # logger.warning(f"[ALERT] Suspicious Startup Entry:")
+        # logger.warning(f"  Key Path: {entry.get('key_path','N/A')}")
+        # logger.warning(f"  Value Name: {entry.get('value_name','N/A')}")
+        # logger.warning(f"  Value Data: {entry.get('value_data','N/A')}")
+        # logger.warning(f"  Reasons:")
+
         for detail in entry.get('details',[]):
             print(f"    - {detail}")
+        
+        alert_user(f"Suspicious startup entry found: Name: '{entry['value_name']}', Data: '{entry.get('value_data','N/A')[:100]}...'", "WARNING")
+
 
 # Print loaded DLLs for each process 
 def print_all_dlls_results(results):
     if not results:
-        print(Fore.GREEN + "No processes found or DLLs to list.")
+        logger.info(Fore.GREEN + "No processes found or DLLs to list." + Style.RESET_ALL) 
         return
-    print(Fore.CYAN + Style.BRIGHT + "\n--- All Processes and Loaded DLLs (Sample) ---")
+    logger.info(Fore.CYAN + Style.BRIGHT + "\n--- All Processes and Loaded DLLs (Sample) ---" + Style.RESET_ALL) 
     for item in results[:10]: 
-        print(f"{Fore.WHITE}Process: {item.get('name','N/A')} (PID: {item.get('pid','N/A')})")
+        logger.info(f"{Fore.WHITE}Process: {item.get('name','N/A')} (PID: {item.get('pid','N/A')}){Style.RESET_ALL}") 
         dlls_data = item.get('dlls', [])
         if isinstance(dlls_data, list):
             if dlls_data:
-                print(f"  DLLs ({len(dlls_data)}):")
+                logger.info(f"  DLLs ({len(dlls_data)}):") 
                 for dll_path in dlls_data[:5]:
-                    print(f"    - {dll_path}")
+                    logger.info(f"    - {dll_path}") 
                 if len(dlls_data) > 5:
-                    print(f"    - ... and {len(dlls_data) - 5} more.")
+                    logger.info(f"    - ... and {len(dlls_data) - 5} more.") 
             else:
-                print(f"  No DLLs loaded or accessible.")
+                logger.info(f"  No DLLs loaded or accessible.") 
         else:
-            print(f"  DLLs: {dlls_data}")
+            logger.info(f"  DLLs: {dlls_data}") 
     if len(results) > 10:
-        print(f"{Fore.CYAN}... and {len(results) - 10} more processes.")
+        logger.info(f"{Fore.CYAN}... and {len(results) - 10} more processes.{Style.RESET_ALL}") 
 
 # Monitor new processes, scan with VirusTotal, alert and terminate if malicious
 def monitor_processes(vt_api_key):
@@ -448,16 +470,16 @@ def main():
 
 
     logger.info(f"DLL Side-Loading Attack Detector finished at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"\n{Fore.BLUE}Scan session finished. Log file: {LOG_FILE}{Style.RESET_ALL}")
-
+    logger.info(f"Scan session finished. Log file: {LOG_FILE}")
 
 if __name__ == "__main__":
     try:
         import ctypes
         # Check admin rights on Windows
         if os.name == 'nt' and not ctypes.windll.shell32.IsUserAnAdmin():
-            print(f"{Fore.YELLOW}WARNING: Script is not running with Administrator privileges. Some scans (e.g., certain process details, system-wide DLL listing, process termination) might be limited or fail.{Style.RESET_ALL}")
-            logger.warning("Script not running as Administrator. Functionality may be limited.")
+            logger.warning("WARNING: Script is not running with Administrator privileges. Some scans (e.g., certain process details, system-wide DLL listing, process termination) might be limited or fail.")
+            logger.warning("Script not running as Administrator. Functionality may be limited.") # Giữ lại dòng log này cho file log
+
     except ImportError:
         logger.info("ctypes module not found, skipping Administrator check (likely not on Windows or minimal Python install).")
         pass

@@ -32,7 +32,7 @@ def load_config():
         logger.warning(f"Configuration file {CONFIG_FILE} not found. Using default values or expecting API key via argument.")
         # Create a default config object if file doesn't exist
         config['VirusTotal'] = {'api_key': '', 'virustotal_malicious_threshold': '5', 'virustotal_api_delay': '15'}
-        config['Settings'] = {'virustotal_malicious_threshold': '5', 'virustotal_api_delay': '15'} # ensure this section exists
+        config['Settings'] = {'virustotal_malicious_threshold': '5', 'virustotal_api_delay': '15'}
         return config
         
     try:
