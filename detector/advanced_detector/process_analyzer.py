@@ -1,5 +1,7 @@
 import psutil
+import time
 from logger_setup import logger
+import static_analyzer
 
 # Target process names from the scenario
 TARGET_PARENT_PROCESS_NAME = "GUP.exe"
@@ -38,7 +40,7 @@ def get_process_by_pid(pid):
         return None
 
 # Gather detailed information of a process
-def get_process_details(proc):
+def get_process_details(proc, use_virustotal=False):
     """Gathers detailed information about a process."""
     details = {}
     try:
@@ -53,24 +55,49 @@ def get_process_details(proc):
         details['status'] = proc.status()
         details['username'] = proc.username()
 
-        # Retrieve the list of DLLs used by the process
+        # Retrieve the list of DLLs used by the process and perform VT check
+        dll_list = [] 
+        dll_vt_results = {} 
         try:
-            details['dlls'] = [dll.path for dll in proc.memory_maps(grouped=False) if dll.path.lower().endswith(".dll")]
-        except (psutil.AccessDenied, psutil.Error) as e: 
+            maps = proc.memory_maps(grouped=False)
+            for mmap in maps:
+                if mmap.path and mmap.path.lower().endswith(".dll"):
+                    dll_path = mmap.path
+                    dll_list.append(dll_path)
+                     VirusTotal check for DLLs
+                    if use_virustotal:
+                         vt_status, vt_pos, vt_total = static_analyzer.check_virustotal(dll_path)
+                         dll_vt_results[dll_path] = {"status": vt_status, "positives": vt_pos, "total": vt_total}
+                          logging for VT check on DLLs
+                         if vt_status == "malicious":
+                              logger.critical(f"Malicious DLL found in PID {proc.pid} ({proc.name()}): {dll_path} (VT: {vt_pos}/{vt_total})")
+                         elif vt_status == "suspicious":
+                              logger.warning(f"Suspicious DLL found in PID {proc.pid} ({proc.name()}): {dll_path} (VT: {vt_pos}/{vt_total})")
+                         elif vt_status in ["api_key_missing", "error_hashing", "api_limit", "error", "error_request", "api_unauthorized"]:
+                              logger.error(f"VirusTotal check failed for DLL {dll_path} in PID {proc.pid}: {vt_status}")
+                         else:
+                              logger.info(f"DLL {dll_path} in PID {proc.pid} is CLEAN according to VT ({vt_pos}/{vt_total})")
+
+        except (psutil.AccessDenied, psutil.Error) as e:
             logger.debug(f"Could not retrieve DLLs for PID {proc.pid}: {e}")
-            details['dlls'] = ["Access Denied or Error"]
+            dll_list = ["Access Denied or Error"] # Keep this for basic info
+            if use_virustotal: 
+                dll_vt_results["Access Denied or Error"] = {"status": "not_checked", "positives": 0, "total": 0} 
+
+        details['dlls'] = dll_list # Updated
+        details['dll_virustotal'] = dll_vt_results 
 
         # Retrieve the network connections of the process
         try:
             connections = []
             for conn in proc.connections(kind='inet'):
                  connections.append({
-                     "fd": conn.fd,
-                     "family": conn.family,
-                     "type": conn.type,
-                     "laddr": conn.laddr,
-                     "raddr": conn.raddr,
-                     "status": conn.status
+                    "fd": conn.fd,
+                    "family": conn.family,
+                    "type": conn.type,
+                    "laddr": conn.laddr,
+                    "raddr": conn.raddr,
+                    "status": conn.status
                  })
             details['connections'] = connections
         except (psutil.AccessDenied, psutil.Error) as e:
@@ -83,7 +110,7 @@ def get_process_details(proc):
     return details
 
 
-def analyze_all_processes():
+def analyze_all_processes(use_virustotal=False):
     """
     Analyzes all running processes for the GUP.exe -> svchost.exe pattern.
     Returns a list of suspicious findings.
@@ -91,14 +118,17 @@ def analyze_all_processes():
     logger.info("Starting scan of all running processes for GUP.exe -> svchost.exe pattern.")
     suspicious_findings = []
 
+    time.sleep(10)
+
     gup_processes = get_process_by_name(TARGET_PARENT_PROCESS_NAME)
     if not gup_processes:
         logger.info(f"No active '{TARGET_PARENT_PROCESS_NAME}' processes found.")
+        return suspicious_findings
 
     for gup_proc in gup_processes:
         try:
             logger.info(f"Found '{TARGET_PARENT_PROCESS_NAME}' (PID: {gup_proc.pid}). Checking its children.")
-            gup_details = get_process_details(gup_proc)
+            gup_details = get_process_details(gup_proc, use_virustotal)
             if not gup_details: continue
 
             children = gup_proc.children(recursive=False)
@@ -109,7 +139,7 @@ def analyze_all_processes():
                             f"Suspicious: '{TARGET_PARENT_PROCESS_NAME}' (PID: {gup_proc.pid}) "
                             f"spawned '{TARGET_CHILD_PROCESS_NAME}' (PID: {child.pid})."
                         )
-                        child_details = get_process_details(child)
+                        child_details = get_process_details(child, use_virustotal)
                         finding = {
                             "type": "Suspicious Process Chain",
                             "gup_process": gup_details,
@@ -138,13 +168,21 @@ def analyze_all_processes():
 
     return suspicious_findings
 
-def analyze_svchost_parents():
+def analyze_svchost_parents(use_virustotal=False):
     """
     Analyzes svchost.exe processes to see if they have non-standard parent processes.
     Returns a list of suspicious findings.
     """
     logger.info("Starting scan for svchost.exe with non-standard parents.")
     suspicious_findings = []
+
+    time.sleep(10)
+
+    # Check if svchost.exe processes exist after waiting.  basic check
+    svchost_processes_check = get_process_by_name("svchost.exe") 
+    if not svchost_processes_check: 
+        logger.info("No svchost.exe processes found after waiting.") 
+        return suspicious_findings 
 
     for proc in psutil.process_iter(['pid', 'name', 'ppid']):
         try:
@@ -159,7 +197,7 @@ def analyze_svchost_parents():
                             f"Suspicious svchost.exe (PID: {proc.info['pid']}) "
                             f"spawned by non-standard parent '{parent_proc.name()}' (PID: {parent_pid})."
                         )
-                        svchost_details = get_process_details(proc)
+                        svchost_details = get_process_details(proc, use_virustotal)
                         if svchost_details:
                              suspicious_findings.append({
                                 "type": "Suspicious svchost Parent",
@@ -170,19 +208,19 @@ def analyze_svchost_parents():
                              })
 
                 except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                     logger.warning(
-                        f"Suspicious: Cannot access parent of svchost.exe (PID: {proc.info['pid']}). "
-                        f"Parent PID: {parent_pid} (possibly terminated or access denied)."\
-                     )
-                     svchost_details = get_process_details(proc) 
-                     if svchost_details:
-                          suspicious_findings.append({
-                              "type": "Suspicious svchost Parent (Parent Inaccessible)",
-                              "svchost_process": svchost_details,
-                              "parent_process": {"pid": parent_pid, "name": "Inaccessible or Terminated"},
-                              "message": f"svchost.exe (PID {proc.info['pid']}) parent (PID {parent_pid}) is inaccessible or terminated.",
-                              "action_taken": "alert" 
-                          })
+                    logger.warning(
+                    f"Suspicious: Cannot access parent of svchost.exe (PID: {proc.info['pid']}). "
+                    f"Parent PID: {parent_pid} (possibly terminated or access denied)."\
+                    )
+                    svchost_details = get_process_details(proc, use_virustotal) 
+                    if svchost_details:
+                        suspicious_findings.append({
+                            "type": "Suspicious svchost Parent (Parent Inaccessible)",
+                            "svchost_process": svchost_details,
+                            "parent_process": {"pid": parent_pid, "name": "Inaccessible or Terminated"},
+                            "message": f"svchost.exe (PID {proc.info['pid']}) parent (PID {parent_pid}) is inaccessible or terminated.",
+                            "action_taken": "alert" 
+                        })
 
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             continue
@@ -193,14 +231,14 @@ def analyze_svchost_parents():
     return suspicious_findings
 
 
-def scan_process_by_pid(pid_to_scan):
+def scan_process_by_pid(pid_to_scan, use_virustotal=False):
     """Scans a specific process by its PID."""
     logger.info(f"Scanning process with PID: {pid_to_scan}")
     proc = get_process_by_pid(pid_to_scan)
     if not proc:
         return None
 
-    details = get_process_details(proc)
+    details = get_process_details(proc, use_virustotal)
     if details:
         logger.info(f"Details for PID {pid_to_scan}: Name: {details['name']}, Parent: {details['parent_name']} (PID: {details['ppid']})")
 
@@ -214,27 +252,106 @@ def scan_process_by_pid(pid_to_scan):
 
     return details
 
-def list_all_process_dlls():
-    """Lists all processes and their loaded DLLs (can be very verbose)."""
+ function scan_process_by_name
+def scan_process_by_name(process_name, use_virustotal=False):
+    """
+    Finds processes by name and scans them, including optional VirusTotal checks for DLLs. 
+    Includes a wait period. 
+    Returns a list of process details.
+    """
+    logger.info(f"Starting scan for processes named: {process_name}")
+    found_processes = []
+    process_details_list = []  to store details for found processes
+
+    time.sleep(10)  - wait for processes to appear
+
+    processes = get_process_by_name(process_name)
+    if not processes:
+        logger.info(f"No processes named '{process_name}' found after waiting.")  'after waiting'
+        return process_details_list  return
+
+    logger.info(f"Found {len(processes)} process(es) named '{process_name}'. Analyzing details.")
+    for proc in processes:
+        try:
+             use_virustotal to get_process_details call
+            details = get_process_details(proc, use_virustotal)
+            if details:
+                process_details_list.append({"type": "ProcessDetails", **details})  type for consistent handling
+                # Check for suspicious patterns if it's svchost.exe and not the target chain
+                if details['name'].lower() == TARGET_CHILD_PROCESS_NAME.lower() and details.get('parent_name', '').lower() != TARGET_PARENT_PROCESS_NAME.lower():
+                    if details.get('parent_name', '').lower() not in STANDARD_SVCHOST_PARENTS:
+                        logger.warning(f"Suspicious svchost.exe (PID: {details['pid']}) found via name scan, spawned by non-standard parent '{details.get('parent_name','N/A')}' (PID: {details['ppid']}).")
+                        details['suspicion_notes'] = (details.get('suspicion_notes', '') + " Unusual parent found via name scan.").strip()
+
+
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            logger.debug(f"Process (PID potentially {proc.pid if hasattr(proc, 'pid') else 'unknown'}) disappeared or access denied during name scan.")
+            continue
+        except Exception as e:
+            logger.error(f"An unexpected error occurred while analyzing process by name: {e}")
+
+    return process_details_list
+
+ use_virustotal parameter
+def list_all_process_dlls(use_virustotal=False):
+    """
+    Lists all processes and their loaded DLLs, including optional VirusTotal checks. 
+    Can be very verbose. Includes a wait period. 
+    """
     logger.info("Listing all processes and their loaded DLLs. This might take a while and produce a lot of output.")
     all_proc_dlls = []
-    for proc in psutil.process_iter(['pid', 'name']):
+
+    time.sleep(10)  - wait for processes to appear
+
+    processes = list(psutil.process_iter(['pid', 'name'])) # Get a list to check if any exist 
+    if not processes: 
+        logger.info("No processes found after waiting to list DLLs.") 
+        return all_proc_dlls  return
+
+    for proc in processes: # Iterating over the list
         try:
             p_info = proc.as_dict(attrs=['pid', 'name'])
-            p_instance = psutil.Process(p_info['pid'])
-            dlls = []
+            pid = p_info['pid']  for clarity
+            name = p_info['name']  for clarity
+            p_instance = psutil.Process(pid) # Use pid
+
+            dll_list = [] 
+            dll_vt_results = {} 
+
             try:
                 maps = p_instance.memory_maps(grouped=False)
                 for mmap in maps:
                     if mmap.path and mmap.path.lower().endswith(".dll"):
-                        dlls.append(mmap.path)
-            except (psutil.AccessDenied, psutil.Error, psutil.NoSuchProcess):
-                dlls.append("Access Denied or Error retrieving DLLs")
+                        dll_path = mmap.path
+                        dll_list.append(dll_path)
+                         VirusTotal check for DLLs
+                        if use_virustotal:
+                            vt_status, vt_pos, vt_total = static_analyzer.check_virustotal(dll_path)
+                            dll_vt_results[dll_path] = {"status": vt_status, "positives": vt_pos, "total": vt_total}
+                             logging for VT check on DLLs
+                            if vt_status == "malicious":
+                                logger.critical(f"Malicious DLL found in PID {pid} ({name}): {dll_path} (VT: {vt_pos}/{vt_total})")
+                            elif vt_status == "suspicious":
+                                logger.warning(f"Suspicious DLL found in PID {pid} ({name}): {dll_path} (VT: {vt_pos}/{vt_total})")
+                            elif vt_status in ["api_key_missing", "error_hashing", "api_limit", "error", "error_request", "api_unauthorized"]:
+                                logger.error(f"VirusTotal check failed for DLL {dll_path} in PID {pid}: {vt_status}")
+                            else:
+                                logger.info(f"DLL {dll_path} in PID {pid} is CLEAN according to VT ({vt_pos}/{vt_total})")
 
-            if dlls :
-                 all_proc_dlls.append({"pid": p_info['pid'], "name": p_info['name'], "dlls": dlls})
+            except (psutil.AccessDenied, psutil.Error, psutil.NoSuchProcess):
+                dll_list = ["Access Denied or Error retrieving DLLs"]
+                if use_virustotal: 
+                    dll_vt_results["Access Denied or Error"] = {"status": "not_checked", "positives": 0, "total": 0} 
+
+
+            if dll_list : # Changed from if dlls:
+                # Updated append to include VT results
+                all_proc_dlls.append({"pid": pid, "name": name, "dlls": dll_list, "dll_virustotal": dll_vt_results})
 
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-            continue 
+            continue
+        except Exception as e:  general exception handling
+            logger.error(f"An unexpected error occurred while listing DLLs for PID {proc.pid}: {e}") 
+
     logger.info("Finished listing DLLs for all processes.")
     return all_proc_dlls

@@ -8,6 +8,7 @@ import registry_analyzer
 import utils
 import psutil
 import tkinter as tk 
+import logging
 
 from datetime import datetime
 from logger_setup import logger, LOG_FILE
@@ -147,6 +148,14 @@ def print_process_scan_results(results):
                     laddr_str = f"{conn.get('laddr',())[0]}:{conn.get('laddr',())[1]}" if conn.get('laddr') else "N/A"
                     raddr_str = f"{conn.get('raddr',())[0]}:{conn.get('raddr',())[1]}" if conn.get('raddr') else "N/A"
                     logger.critical(f"      LADDR: {laddr_str}, RADDR: {raddr_str}, Status: {conn.get('status','N/A')}")
+            
+            # DLL and VirusTotal results for suspicious chain
+            dll_vt_results = svchost.get('dll_virustotal', {}) 
+            if dll_vt_results: 
+                logger.critical(f"{Fore.YELLOW}    Loaded DLLs VirusTotal Results for {svchost.get('name','N/A')} (PID: {svchost.get('pid','N/A')}):") 
+                for dll_path, vt_info in dll_vt_results.items(): 
+                    logger.critical(f"      - {dll_path}: Status: {vt_info['status']}, Positives: {vt_info['positives']}/{vt_info['total']}") 
+
             # alert_user and termination logic remains the same
             alert_user(message, "CRITICAL")
             terminate_process_and_parent(svchost.get('pid'), gup.get('pid'), reason="Suspicious GUP.exe -> svchost.exe chain")
@@ -167,6 +176,14 @@ def print_process_scan_results(results):
             # Parent is inaccessible
             if finding["type"] == "Suspicious svchost Parent (Parent Inaccessible)":
                 logger.critical(f"  Note: Parent process was inaccessible or terminated.")
+            
+            # DLL and VirusTotal results for suspicious svchost parent
+            dll_vt_results = svchost.get('dll_virustotal', {}) 
+            if dll_vt_results: 
+                logger.critical(f"{Fore.YELLOW}    Loaded DLLs VirusTotal Results for {svchost.get('name','N/A')} (PID: {svchost.get('pid','N/A')}):") 
+                for dll_path, vt_info in dll_vt_results.items(): 
+                    logger.critical(f"      - {dll_path}: Status: {vt_info['status']}, Positives: {vt_info['positives']}/{vt_info['total']}") 
+
             alert_user(message, "CRITICAL")
             terminate_process_and_parent(svchost.get('pid'), parent.get('pid'), reason="Suspicious svchost parent")
         
@@ -191,11 +208,22 @@ def print_process_scan_results(results):
                 logger.warning(f"  Notes: {finding['suspicion_notes']}")
 
             # DLLs info
-            dlls_data = finding.get('dlls', [])
-            if isinstance(dlls_data, list) and any(dll.strip() for dll in dlls_data):
-                logger.log(level, f"  Loaded DLLs (sample): {', '.join(dlls_data[:5])}{'...' if len(dlls_data) > 5 else ''}") 
-            elif isinstance(dlls_data, str): 
-                logger.log(level, f"  Loaded DLLs: {dlls_data}") 
+            dll_list = finding.get('dlls', []) 
+            dll_vt_results = finding.get('dll_virustotal', {}) 
+
+            if isinstance(dll_list, list) and any(dll.strip() for dll in dll_list): # Updated check
+                logger.log(level, f"  Loaded DLLs ({len(dll_list)}):") # Updated count
+                for dll_path in dll_list: # Show sample
+                    logger.log(level, f"    - {dll_path}")
+                    # Print VT result if available
+                    if dll_path in dll_vt_results: 
+                        vt_info = dll_vt_results[dll_path] 
+                        logger.log(level, f"      -> VirusTotal: Status: {vt_info['status']}, Positives: {vt_info['positives']}/{vt_info['total']}") 
+                # if len(dll_list) > 5:
+                #     logger.log(level, f"    - ... and {len(dll_list) - 5} more.")
+            elif isinstance(dll_list, str):
+                logger.log(level, f"  Loaded DLLs: {dll_list}") # Handle "Access Denied" case
+
 
             # Network connections info
             connections_data = finding.get('connections', [])
@@ -247,22 +275,27 @@ def print_all_dlls_results(results):
         logger.info(Fore.GREEN + "No processes found or DLLs to list." + Style.RESET_ALL) 
         return
     logger.info(Fore.CYAN + Style.BRIGHT + "\n--- All Processes and Loaded DLLs (Sample) ---" + Style.RESET_ALL) 
+    
     for item in results[:10]: 
         logger.info(f"{Fore.WHITE}Process: {item.get('name','N/A')} (PID: {item.get('pid','N/A')}){Style.RESET_ALL}") 
-        dlls_data = item.get('dlls', [])
-        if isinstance(dlls_data, list):
-            if dlls_data:
-                logger.info(f"  DLLs ({len(dlls_data)}):") 
-                for dll_path in dlls_data[:5]:
-                    logger.info(f"    - {dll_path}") 
-                if len(dlls_data) > 5:
-                    logger.info(f"    - ... and {len(dlls_data) - 5} more.") 
+        dll_list = item.get('dlls', []) 
+        dll_vt_results = item.get('dll_virustotal', {}) 
+
+        if isinstance(dll_list, list): # Updated check
+            if dll_list:
+                logger.info(f"  DLLs ({len(dll_list)}):") # Updated count
+                # Iterate through all DLLs for this process # Changed to list all
+                for dll_path in dll_list:
+                    logger.info(f"    - {dll_path}")
+                    # Print VT result if available 
+                    if dll_path in dll_vt_results: 
+                         vt_info = dll_vt_results[dll_path] 
+                         logger.info(f"      -> VirusTotal: Status: {vt_info['status']}, Positives: {vt_info['positives']}/{vt_info['total']}") 
             else:
-                logger.info(f"  No DLLs loaded or accessible.") 
+                logger.info(f"  No DLLs loaded or accessible.")
         else:
-            logger.info(f"  DLLs: {dlls_data}") 
-    if len(results) > 10:
-        logger.info(f"{Fore.CYAN}... and {len(results) - 10} more processes.{Style.RESET_ALL}") 
+            logger.info(f"  DLLs: {dll_list}") # Handle "Access Denied" case
+
 
 # Monitor new processes, scan with VirusTotal, alert and terminate if malicious
 def monitor_processes(vt_api_key):
@@ -366,6 +399,7 @@ def main():
 
     parser.add_argument("--scan-processes", action="store_true", help="Scan running processes for GUP.exe -> svchost.exe pattern and other anomalies.")
     parser.add_argument("--scan-pid", metavar="PID", type=int, help="Get details and analyze a specific Process ID.")
+    parser.add_argument("--scan-by-name", metavar="NAME", help="Scan processes by name.")
     parser.add_argument("--list-all-dlls", action="store_true", help="List all processes and their loaded DLLs (can be very verbose).")
 
     parser.add_argument("--scan-registry", action="store_true", help="Scan HKCU\\CurrentVersion\\Run for suspicious entries.")
@@ -385,7 +419,7 @@ def main():
             alert_user("VirusTotal API key is required for --use-virustotal, --full-scan with VT, or --monitor. Please provide it via --vt-api-key or in config.ini.", "ERROR")
             logger.error("VirusTotal API key missing for required VirusTotal scan.")
             static_analyzer.set_vt_api_key(None)
-            if args.monitor:
+            if args.monitor or args.scan_by_name or args.list_all_dlls or (args.full_scan and args.use_virustotal) or args.use_virustotal: 
                 sys.exit(1)
         else:
             static_analyzer.set_vt_api_key(vt_api_key_to_use)
@@ -399,7 +433,7 @@ def main():
     logger.info(f"Starting DLL Side-Loading Attack Detector at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     logger.info(f"Command line arguments: {sys.argv}")
 
-    action_args = [args.scan_static, args.scan_processes, args.scan_pid, args.list_all_dlls, args.scan_registry, args.full_scan, args.monitor]
+    action_args = [args.scan_static, args.scan_processes, args.scan_pid,args.scan_by_name, args.list_all_dlls, args.scan_registry, args.full_scan, args.monitor]
     if not any(action_args):
         parser.print_help()
         sys.exit(0)
@@ -417,21 +451,29 @@ def main():
     # Process scans for suspicious patterns
     if args.scan_processes:
         process_findings = []
-        process_findings.extend(process_analyzer.analyze_all_processes()) # GUP.exe -> svchost.exe pattern
-        process_findings.extend(process_analyzer.analyze_svchost_parents()) # Suspicious svchost parents
+        process_findings.extend(process_analyzer.analyze_all_processes(use_virustotal_in_scan)) # GUP.exe -> svchost.exe pattern
+        process_findings.extend(process_analyzer.analyze_svchost_parents(use_virustotal_in_scan)) # Suspicious svchost parents
         print_process_scan_results(process_findings)
 
     # Scan a specific PID
     if args.scan_pid:
-        result = process_analyzer.scan_process_by_pid(args.scan_pid)
+        result = process_analyzer.scan_process_by_pid(args.scan_pid, use_virustotal_in_scan)
         if result:
             print_process_scan_results([{"type": "ProcessDetails", **result}])
         else:
             alert_user(f"Process with PID {args.scan_pid} not found or no details retrieved.", "INFO")
 
+    if args.scan_by_name:
+        process_findings_by_name = process_analyzer.scan_process_by_name(args.scan_by_name, use_virustotal_in_scan) 
+        if process_findings_by_name: 
+            print_process_scan_results(process_findings_by_name) 
+        else: 
+            alert_user(f"No processes named '{args.scan_by_name}' found.", "INFO") 
+
+
     # List all DLLs of all processes
     if args.list_all_dlls:
-        results = process_analyzer.list_all_process_dlls()
+        results = process_analyzer.list_all_process_dlls(use_virustotal_in_scan)
         print_all_dlls_results(results)
 
     # Registry scan
@@ -452,8 +494,8 @@ def main():
             logger.error(f"Full scan static path not found: {args.full_scan}")
 
         process_findings = []
-        process_findings.extend(process_analyzer.analyze_all_processes()) # GUP.exe -> svchost.exe pattern
-        process_findings.extend(process_analyzer.analyze_svchost_parents()) # Suspicious svchost parents
+        process_findings.extend(process_analyzer.analyze_all_processes(use_virustotal_in_scan)) # GUP.exe -> svchost.exe pattern
+        process_findings.extend(process_analyzer.analyze_svchost_parents(use_virustotal_in_scan)) # Suspicious svchost parents
         print_process_scan_results(process_findings)
 
         registry_results = registry_analyzer.scan_hkcu_run_key()
