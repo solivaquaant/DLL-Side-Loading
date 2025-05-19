@@ -9,8 +9,6 @@ python main.py --scan-registry
 
 python main.py --full-scan "C:\Program Files\Notepad++\updater" --use-virustotal
 
-python main.py --monitor-gup
-
 python main.py --scan-pid 1234
 
 python main.py --list-all-dlls
