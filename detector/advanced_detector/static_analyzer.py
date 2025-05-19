@@ -1,4 +1,3 @@
-# static_analyzer.py
 import os
 import time
 import requests
@@ -11,7 +10,6 @@ except ImportError:
     PEFILE_AVAILABLE = False
     logger.warning("pefile library not found. Digital signature check will be basic.")
 
-# Global variable to store VirusTotal API key, can be overridden by command line
 VIRUSTOTAL_API_KEY = VT_API_KEY
 
 def set_vt_api_key(api_key):
@@ -41,7 +39,7 @@ def check_virustotal(file_path):
     
     try:
         response = requests.get(url, headers=headers)
-        time.sleep(VT_API_DELAY) # Respect API rate limits
+        time.sleep(VT_API_DELAY)
 
         if response.status_code == 200:
             result = response.json()
@@ -49,8 +47,8 @@ def check_virustotal(file_path):
             last_analysis_stats = attributes.get("last_analysis_stats", {})
             
             positive_scans = last_analysis_stats.get("malicious", 0) + \
-                             last_analysis_stats.get("suspicious", 0) # Consider suspicious as positive for our count
-            total_scans = sum(last_analysis_stats.values()) # This is a simplification, VT gives more detailed breakdown
+                             last_analysis_stats.get("suspicious", 0) 
+            total_scans = sum(last_analysis_stats.values()) 
 
             logger.debug(f"VirusTotal response for {file_hash}: {last_analysis_stats}")
 
@@ -83,7 +81,7 @@ def check_digital_signature(file_path):
     """
     if not PEFILE_AVAILABLE:
         logger.debug(f"pefile not available, cannot check signature for {file_path}")
-        return None # Unknown status
+        return None
 
     if not os.path.exists(file_path):
         logger.error(f"File not found for signature check: {file_path}")
@@ -91,7 +89,6 @@ def check_digital_signature(file_path):
 
     try:
         pe = pefile.PE(file_path, fast_load=True)
-        # The security directory entry index in the data directory array
         security_dir_idx = pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_SECURITY']
         
         if len(pe.OPTIONAL_HEADER.DATA_DIRECTORY) > security_dir_idx:
@@ -108,7 +105,7 @@ def check_digital_signature(file_path):
             
     except pefile.PEFormatError:
         logger.debug(f"{file_path} is not a valid PE file or pefile could not parse it.")
-        return None # Not a PE file or parse error
+        return None
     except Exception as e:
         logger.error(f"Error checking digital signature for {file_path}: {e}")
         return False
@@ -170,7 +167,7 @@ def scan_file(file_path, use_virustotal=False):
         try:
             with open(file_path, "r", encoding='utf-8', errors='ignore') as f_vbs:
                 content = f_vbs.read().lower()
-                if "gup.exe" in content and "createobject(\"wscript.shell\").run" in content: # Basic check
+                if "gup.exe" in content and "createobject(\"wscript.shell\").run" in content: 
                     findings["is_suspicious"] = True
                     findings["details"].append("VBS file potentially launches GUP.exe in background.")
                     logger.warning(f"Suspicious VBS file found: {file_path} - may launch GUP.exe")
@@ -187,7 +184,7 @@ def scan_folder(folder_path, use_virustotal=False):
     """
     logger.info(f"Starting static scan of folder: {folder_path}")
     all_findings = []
-    allowed_extensions = (".exe", ".dll", ".vbs", ".sys", ".com", ".scr") # Add more if needed
+    allowed_extensions = (".exe", ".dll", ".vbs", ".sys", ".com", ".scr") 
 
     if not os.path.isdir(folder_path):
         logger.error(f"Folder not found: {folder_path}")
@@ -199,7 +196,7 @@ def scan_folder(folder_path, use_virustotal=False):
                 file_path = os.path.join(root, file_name)
                 try:
                     file_findings = scan_file(file_path, use_virustotal)
-                    if file_findings["is_suspicious"] or use_virustotal : # Report if suspicious or if VT was used (even for clean)
+                    if file_findings["is_suspicious"] or use_virustotal : 
                         all_findings.append(file_findings)
                 except Exception as e:
                     logger.error(f"Error scanning file {file_path}: {e}")

@@ -1,4 +1,3 @@
-# utils.py
 import hashlib
 import configparser
 import os
@@ -14,7 +13,7 @@ def get_file_hash(file_path, hash_algo="sha256"):
     hasher = hashlib.new(hash_algo)
     try:
         with open(file_path, "rb") as f:
-            while chunk := f.read(8192): # Read in 8KB chunks
+            while chunk := f.read(8192): 
                 hasher.update(chunk)
         return hasher.hexdigest()
     except FileNotFoundError:

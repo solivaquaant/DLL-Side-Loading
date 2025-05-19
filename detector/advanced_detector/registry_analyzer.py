@@ -1,14 +1,12 @@
-# registry_analyzer.py
-import winreg # Specific to Windows
+import winreg
 import os
 from logger_setup import logger
 from utils import get_appdata_path
 
 # Registry key for startup programs for the current user
 RUN_KEY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
-# Suspicious VBS file name (example, can be parameterized)
-SUSPICIOUS_VBS_PATTERN = ".vbs" # General VBS, can be more specific
-POTENTIAL_MALWARE_COMMAND = "gup.exe" # Command to look for
+SUSPICIOUS_VBS_PATTERN = ".vbs" 
+POTENTIAL_MALWARE_COMMAND = "gup.exe" 
 
 def scan_hkcu_run_key():
     """
@@ -50,8 +48,8 @@ def scan_hkcu_run_key():
                         logger.warning(f"Suspicious startup entry '{value_name}': references '{POTENTIAL_MALWARE_COMMAND}': {value_data}")
                     
                     # Check 4: Unusually long command strings or obfuscated commands (basic check)
-                    if len(value_data) > 260: # MAX_PATH, often exceeded by malicious scripts
-                        is_suspicious = True # Could be legitimate, but worth a look
+                    if len(value_data) > 260: 
+                        is_suspicious = True 
                         details.append(f"Command is unusually long (length: {len(value_data)}).")
                         logger.warning(f"Suspicious startup entry '{value_name}': very long command: {value_data[:100]}...")
 
@@ -64,8 +62,7 @@ def scan_hkcu_run_key():
                             "type": "Suspicious Startup Entry",
                             "details": details
                         })
-
-                except OSError: # This exception occurs when there are no more values
+                except OSError:
                     break
     except FileNotFoundError:
         logger.error(f"Registry key HKEY_CURRENT_USER\\{RUN_KEY_PATH} not found.")
@@ -75,9 +72,3 @@ def scan_hkcu_run_key():
     if not suspicious_entries:
         logger.info(f"No suspicious entries found in HKCU\\{RUN_KEY_PATH} based on current criteria.")
     return suspicious_entries
-
-# Example of how to add more registry checks if needed:
-# def scan_other_persistence_keys():
-#   logger.info("Scanning other known persistence registry keys...")
-#   # Add logic for other keys like RunOnce, ShellServiceObjectDelayLoad, etc.
-#   pass
