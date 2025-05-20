@@ -58,25 +58,30 @@ def get_process_details(proc, use_virustotal=False):
         # Retrieve the list of DLLs used by the process and perform VT check
         dll_list = [] 
         dll_vt_results = {} 
+        processed_dll_paths = set()
+        
         try:
             maps = proc.memory_maps(grouped=False)
             for mmap in maps:
                 if mmap.path and mmap.path.lower().endswith(".dll"):
                     dll_path = mmap.path
-                    dll_list.append(dll_path)
-                    #  VirusTotal check for DLLs
-                    if use_virustotal:
-                         vt_status, vt_pos, vt_total = static_analyzer.check_virustotal(dll_path)
-                         dll_vt_results[dll_path] = {"status": vt_status, "positives": vt_pos, "total": vt_total}
-                        #   logging for VT check on DLLs
-                         if vt_status == "malicious":
-                              logger.critical(f"Malicious DLL found in PID {proc.pid} ({proc.name()}): {dll_path} (VT: {vt_pos}/{vt_total})")
-                         elif vt_status == "suspicious":
-                              logger.warning(f"Suspicious DLL found in PID {proc.pid} ({proc.name()}): {dll_path} (VT: {vt_pos}/{vt_total})")
-                         elif vt_status in ["api_key_missing", "error_hashing", "api_limit", "error", "error_request", "api_unauthorized"]:
-                              logger.error(f"VirusTotal check failed for DLL {dll_path} in PID {proc.pid}: {vt_status}")
-                         else:
-                              logger.info(f"DLL {dll_path} in PID {proc.pid} is CLEAN according to VT ({vt_pos}/{vt_total})")
+
+                    if dll_path not in processed_dll_paths:
+                        dll_list.append(dll_path)
+                        processed_dll_paths.add(dll_path)
+
+                        if use_virustotal:
+                            vt_status, vt_pos, vt_total = static_analyzer.check_virustotal(dll_path)
+                            dll_vt_results[dll_path] = {"status": vt_status, "positives": vt_pos, "total": vt_total}
+
+                            if vt_status == "malicious":
+                                logger.critical(f"Malicious DLL found in PID {proc.pid} ({proc.name()}): {dll_path} (VT: {vt_pos}/{vt_total})")
+                            elif vt_status == "suspicious":
+                                logger.warning(f"Suspicious DLL found in PID {proc.pid} ({proc.name()}): {dll_path} (VT: {vt_pos}/{vt_total})")
+                            elif vt_status in ["api_key_missing", "error_hashing", "api_limit", "error", "error_request", "api_unauthorized"]:
+                                logger.error(f"VirusTotal check failed for DLL {dll_path} in PID {proc.pid}: {vt_status}")
+                            else:
+                                logger.info(f"DLL {dll_path} in PID {proc.pid} is CLEAN according to VT ({vt_pos}/{vt_total})")
 
         except (psutil.AccessDenied, psutil.Error) as e:
             logger.debug(f"Could not retrieve DLLs for PID {proc.pid}: {e}")
@@ -84,7 +89,7 @@ def get_process_details(proc, use_virustotal=False):
             if use_virustotal: 
                 dll_vt_results["Access Denied or Error"] = {"status": "not_checked", "positives": 0, "total": 0} 
 
-        details['dlls'] = dll_list # Updated
+        details['dlls'] = dll_list 
         details['dll_virustotal'] = dll_vt_results 
 
         # Retrieve the network connections of the process
@@ -317,25 +322,30 @@ def list_all_process_dlls(use_virustotal=False):
 
             dll_list = [] 
             dll_vt_results = {} 
+            processed_dll_paths = set()
 
             try:
                 maps = p_instance.memory_maps(grouped=False)
                 for mmap in maps:
                     if mmap.path and mmap.path.lower().endswith(".dll"):
                         dll_path = mmap.path
-                        dll_list.append(dll_path)
-                        if use_virustotal:
-                            vt_status, vt_pos, vt_total = static_analyzer.check_virustotal(dll_path)
-                            dll_vt_results[dll_path] = {"status": vt_status, "positives": vt_pos, "total": vt_total}
-                            #  logging for VT check on DLLs
-                            if vt_status == "malicious":
-                                logger.critical(f"Malicious DLL found in PID {pid} ({name}): {dll_path} (VT: {vt_pos}/{vt_total})")
-                            elif vt_status == "suspicious":
-                                logger.warning(f"Suspicious DLL found in PID {pid} ({name}): {dll_path} (VT: {vt_pos}/{vt_total})")
-                            elif vt_status in ["api_key_missing", "error_hashing", "api_limit", "error", "error_request", "api_unauthorized"]:
-                                logger.error(f"VirusTotal check failed for DLL {dll_path} in PID {pid}: {vt_status}")
-                            else:
-                                logger.info(f"DLL {dll_path} in PID {pid} is CLEAN according to VT ({vt_pos}/{vt_total})")
+                        
+                        if dll_path not in processed_dll_paths:
+                            dll_list.append(dll_path)
+                            processed_dll_paths.add(dll_path) 
+
+                            if use_virustotal:
+                                vt_status, vt_pos, vt_total = static_analyzer.check_virustotal(dll_path)
+                                dll_vt_results[dll_path] = {"status": vt_status, "positives": vt_pos, "total": vt_total}
+                                #  logging for VT check on DLLs
+                                if vt_status == "malicious":
+                                    logger.critical(f"Malicious DLL found in PID {pid} ({name}): {dll_path} (VT: {vt_pos}/{vt_total})")
+                                elif vt_status == "suspicious":
+                                    logger.warning(f"Suspicious DLL found in PID {pid} ({name}): {dll_path} (VT: {vt_pos}/{vt_total})")
+                                elif vt_status in ["api_key_missing", "error_hashing", "api_limit", "error", "error_request", "api_unauthorized"]:
+                                    logger.error(f"VirusTotal check failed for DLL {dll_path} in PID {pid}: {vt_status}")
+                                else:
+                                    logger.info(f"DLL {dll_path} in PID {pid} is CLEAN according to VT ({vt_pos}/{vt_total})")
 
             except (psutil.AccessDenied, psutil.Error, psutil.NoSuchProcess):
                 dll_list = ["Access Denied or Error retrieving DLLs"]

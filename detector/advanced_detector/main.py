@@ -44,7 +44,7 @@ def show_alert_messagebox(title, message, type="warning"):
     # Try to close the hidden root window
     try:
         root.destroy()
-    except tk.TclError:
+    except:
         pass
 
 # Terminate a process by PID
@@ -241,32 +241,64 @@ def print_process_scan_results(results):
                 alert_user(f"Suspicion regarding PID {finding.get('pid','N/A')}: {finding['suspicion_notes']}", "WARNING")
 
 # Print results from registry scan (HKCU\Run)
-def print_registry_scan_results(results):
-    if not results:
-        logger.info(Fore.GREEN + "No suspicious registry entries found in HKCU\\Run based on current criteria." + Style.RESET_ALL) 
+def print_registry_scan_results(findings):
+    """
+    Prints findings from the registry analysis.
+    If suspicious entries are found, prompts the user to delete them.
+    """
+    if not findings:
+        alert_user("No suspicious registry entries found.", "INFO")
         return
 
-    # logger.info(Fore.CYAN + Style.BRIGHT + "\n--- Registry Scan Results (HKCU\\Run) ---" + Style.RESET_ALL) 
-    for entry in results:
-        # alert_user(f"Suspicious startup entry found: Name: '{entry['value_name']}', Data: '{entry.get('value_data','N/A')[:100]}...'", "WARNING")
-        # show_alert_messagebox("Suspicious Registry Entry", f"Suspicious startup entry found:\nName: '{entry['value_name']}'\nData: '{entry.get('value_data','N/A')[:100]}...'", "warning") # Alert via messagebox
-        
-        print(f"{Fore.YELLOW}[ALERT] Suspicious Startup Entry:")
-        print(f"  Key Path: {entry.get('key_path','N/A')}")
-        print(f"  Value Name: {entry.get('value_name','N/A')}")
-        print(f"  Value Data: {entry.get('value_data','N/A')}")
-        print(f"  Reasons:")
+    alert_user(f"--- Registry Scan Results ({len(findings)} suspicious entries) ---", "CRITICAL")
+    for i, finding in enumerate(findings):
+        key_path = finding.get("key_path", "N/A")
+        value_name = finding.get("value_name", "N/A")
+        value_data = finding.get("value_data", "N/A")
+        suspicion_type = finding.get("type", "N/A")
+        details = finding.get("details", ["No details available."])
+        associated_file = finding.get("associated_file", None) # Lấy thông tin file liên quan
 
-        # logger.warning(f"[ALERT] Suspicious Startup Entry:")
-        # logger.warning(f"  Key Path: {entry.get('key_path','N/A')}")
-        # logger.warning(f"  Value Name: {entry.get('value_name','N/A')}")
-        # logger.warning(f"  Value Data: {entry.get('value_data','N/A')}")
-        # logger.warning(f"  Reasons:")
+        alert_user(f"\n[{i+1}] Suspicious Registry Entry:", "CRITICAL")
+        alert_user(f"  Key Path: {key_path}", "CRITICAL")
+        alert_user(f"  Value Name: {value_name}", "CRITICAL")
+        alert_user(f"  Value Data: {value_data}", "CRITICAL")
+        alert_user(f"  Suspicion Type: {suspicion_type}", "CRITICAL")
+        alert_user("  Details:", "CRITICAL")
+        for detail in details:
+            alert_user(f"    - {detail}", "CRITICAL")
+        if associated_file:
+            alert_user(f"  Associated File: {associated_file}", "CRITICAL")
 
-        for detail in entry.get('details',[]):
-            print(f"    - {detail}")
-        
-        alert_user(f"Suspicious startup entry found: Name: '{entry['value_name']}', Data: '{entry.get('value_data','N/A')[:100]}...'", "WARNING")
+    # Prompt user for deletion if suspicious entries are found
+    if findings:
+        print(Fore.RED + Style.BRIGHT + "\nDo you want to delete these suspicious registry entries and associated files (if any)? (yes/no)" + Style.RESET_ALL)
+        user_response = input("Your choice: ").strip().lower()
+
+        if user_response == 'yes':
+            for finding in findings:
+                key_path = finding.get("key_path")
+                value_name = finding.get("value_name")
+                associated_file = finding.get("associated_file")
+
+                # Attempt to delete registry value
+                if key_path and value_name:
+                    print(f"Attempting to delete registry value: {value_name} from {key_path}...")
+                    if registry_analyzer.delete_registry_value(key_path, value_name):
+                        alert_user(f"Successfully deleted registry value: {value_name} from {key_path}", "INFO")
+                    else:
+                        alert_user(f"Failed to delete registry value: {value_name} from {key_path}. Check logs for details.", "ERROR")
+                
+                # Attempt to delete associated file if it exists
+                if associated_file:
+                    print(f"Attempting to delete associated file: {associated_file}...")
+                    if registry_analyzer.delete_file(associated_file):
+                        alert_user(f"Successfully deleted associated file: {associated_file}", "INFO")
+                    else:
+                        alert_user(f"Failed to delete associated file: {associated_file}. Check logs for details.", "ERROR")
+        else:
+            alert_user("Deletion request declined by user. Suspicious entries remain.", "WARNING")
+
 
 
 # Print loaded DLLs for each process 
