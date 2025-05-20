@@ -64,11 +64,11 @@ def get_process_details(proc, use_virustotal=False):
                 if mmap.path and mmap.path.lower().endswith(".dll"):
                     dll_path = mmap.path
                     dll_list.append(dll_path)
-                     VirusTotal check for DLLs
+                    #  VirusTotal check for DLLs
                     if use_virustotal:
                          vt_status, vt_pos, vt_total = static_analyzer.check_virustotal(dll_path)
                          dll_vt_results[dll_path] = {"status": vt_status, "positives": vt_pos, "total": vt_total}
-                          logging for VT check on DLLs
+                        #   logging for VT check on DLLs
                          if vt_status == "malicious":
                               logger.critical(f"Malicious DLL found in PID {proc.pid} ({proc.name()}): {dll_path} (VT: {vt_pos}/{vt_total})")
                          elif vt_status == "suspicious":
@@ -252,7 +252,7 @@ def scan_process_by_pid(pid_to_scan, use_virustotal=False):
 
     return details
 
- function scan_process_by_name
+#  function scan_process_by_name
 def scan_process_by_name(process_name, use_virustotal=False):
     """
     Finds processes by name and scans them, including optional VirusTotal checks for DLLs. 
@@ -261,22 +261,22 @@ def scan_process_by_name(process_name, use_virustotal=False):
     """
     logger.info(f"Starting scan for processes named: {process_name}")
     found_processes = []
-    process_details_list = []  to store details for found processes
+    process_details_list = []  # to store details for found processes
 
-    time.sleep(10)  - wait for processes to appear
+    time.sleep(10)  # wait for processes to appear
 
     processes = get_process_by_name(process_name)
     if not processes:
-        logger.info(f"No processes named '{process_name}' found after waiting.")  'after waiting'
-        return process_details_list  return
+        logger.info(f"No processes named '{process_name}' found after waiting.")
+        return process_details_list
 
     logger.info(f"Found {len(processes)} process(es) named '{process_name}'. Analyzing details.")
     for proc in processes:
         try:
-             use_virustotal to get_process_details call
+            #  use_virustotal to get_process_details call
             details = get_process_details(proc, use_virustotal)
             if details:
-                process_details_list.append({"type": "ProcessDetails", **details})  type for consistent handling
+                process_details_list.append({"type": "ProcessDetails", **details})
                 # Check for suspicious patterns if it's svchost.exe and not the target chain
                 if details['name'].lower() == TARGET_CHILD_PROCESS_NAME.lower() and details.get('parent_name', '').lower() != TARGET_PARENT_PROCESS_NAME.lower():
                     if details.get('parent_name', '').lower() not in STANDARD_SVCHOST_PARENTS:
@@ -292,7 +292,7 @@ def scan_process_by_name(process_name, use_virustotal=False):
 
     return process_details_list
 
- use_virustotal parameter
+#  use_virustotal parameter
 def list_all_process_dlls(use_virustotal=False):
     """
     Lists all processes and their loaded DLLs, including optional VirusTotal checks. 
@@ -301,18 +301,18 @@ def list_all_process_dlls(use_virustotal=False):
     logger.info("Listing all processes and their loaded DLLs. This might take a while and produce a lot of output.")
     all_proc_dlls = []
 
-    time.sleep(10)  - wait for processes to appear
+    time.sleep(10)  # wait for processes to appear
 
     processes = list(psutil.process_iter(['pid', 'name'])) # Get a list to check if any exist 
     if not processes: 
         logger.info("No processes found after waiting to list DLLs.") 
-        return all_proc_dlls  return
+        return all_proc_dlls
 
     for proc in processes: # Iterating over the list
         try:
             p_info = proc.as_dict(attrs=['pid', 'name'])
-            pid = p_info['pid']  for clarity
-            name = p_info['name']  for clarity
+            pid = p_info['pid']
+            name = p_info['name']  
             p_instance = psutil.Process(pid) # Use pid
 
             dll_list = [] 
@@ -324,11 +324,10 @@ def list_all_process_dlls(use_virustotal=False):
                     if mmap.path and mmap.path.lower().endswith(".dll"):
                         dll_path = mmap.path
                         dll_list.append(dll_path)
-                         VirusTotal check for DLLs
                         if use_virustotal:
                             vt_status, vt_pos, vt_total = static_analyzer.check_virustotal(dll_path)
                             dll_vt_results[dll_path] = {"status": vt_status, "positives": vt_pos, "total": vt_total}
-                             logging for VT check on DLLs
+                            #  logging for VT check on DLLs
                             if vt_status == "malicious":
                                 logger.critical(f"Malicious DLL found in PID {pid} ({name}): {dll_path} (VT: {vt_pos}/{vt_total})")
                             elif vt_status == "suspicious":
@@ -350,7 +349,7 @@ def list_all_process_dlls(use_virustotal=False):
 
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             continue
-        except Exception as e:  general exception handling
+        except Exception as e: 
             logger.error(f"An unexpected error occurred while listing DLLs for PID {proc.pid}: {e}") 
 
     logger.info("Finished listing DLLs for all processes.")
